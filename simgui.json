@@ -10,17 +10,21 @@
         "header": {
           "open": true
         }
-      },
+      }
+    },
+    "Other Devices": {
       "window": {
-        "visible": true
+        "visible": false
       }
     },
     "RoboRIO": {
       "RoboRIO Input": {
         "open": true
-      },
+      }
+    },
+    "Timing": {
       "window": {
-        "visible": true
+        "visible": false
       }
     }
   },
