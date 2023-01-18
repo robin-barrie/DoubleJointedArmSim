@@ -30,6 +30,12 @@ import edu.wpi.first.wpilibj.util.Color8Bit;
 
 /** This is a sample program to demonstrate the use of arm simulation with existing code. */
 public class Robot extends TimedRobot {
+
+  static double topArmLength = 27; //in
+  static double bottomArmLength = 27; //in
+  static double armPivotX = 55; //65 in = center of 30.5 bumper starting at 49.75
+  static double armPivotY = 21.75;//in 
+
   private static final int kMotorPort = 0;
   private static final int kEncoderAChannel = 0;
   private static final int kEncoderBChannel = 1;
@@ -38,6 +44,9 @@ public class Robot extends TimedRobot {
   // The P gain for the PID controller that drives this arm.
   private static final double kArmKp = 40.0;
   private static final double kArmKi = 0.0;
+
+  double pidOutputTop, pidOutputBottom;
+  int topSetpoint, bottomSetpoint;
 
 
   // distance per pulse = (angle per revolution) / (pulses per revolution)
@@ -60,34 +69,40 @@ public class Robot extends TimedRobot {
   // Simulation classes help us simulate what's going on, including gravity.
   private static final double m_armReduction = 600;
   private static final double m_arm_topMass = 10.0; // Kilograms
-  private static final double m_arm_topLength = Units.inchesToMeters(38.5);
+  private static final double m_arm_topLength = Units.inchesToMeters(topArmLength);
   private static final double m_arm_bottomMass = 4.0; // Kilograms
-  private static final double m_arm_bottomLength = Units.inchesToMeters(27);
+  private static final double m_arm_bottomLength = Units.inchesToMeters(bottomArmLength);
 
-  private static final int m_arm_top_min_angle = -75; 
-  private static final int m_arm_top_max_angle = 260; 
-  private static final int m_arm_bottom_min_angle = 30; 
-  private static final int m_arm_bottom_max_angle = 150; 
+  private static final int m_arm_top_min_angle = -175; 
+  private static final int m_arm_top_max_angle = 175; 
+  private static final int m_arm_bottom_min_angle = -30; 
+  private static final int m_arm_bottom_max_angle = 210; 
 
 
   //SETPOINTS FOR PRESETS MODE (Uses Virtual 4 Bar Mode for smooth movement)
-  private static final int stowedBottom = 90;
-  private static final int stowedTop = 260;
+  private static final int startingPositionBottom = -30;
+  private static final int startingPositionTop = 175;
 
-  private static final int intakeBottom = 135;
-  private static final int intakeTop = 265;
+  private static final int straightUpBottom = 90;
+  private static final int straightUpTop = 0;
 
-  private static final int doubleSubstationBottom = 60;
-  private static final int doubleSubstationTop = 185;
+  private static final int travelBottom = -30;
+  private static final int travelTop = 150;//260;
+
+  private static final int intakeBottom = 35;
+  private static final int intakeTop = -110;//265;
+
+  private static final int doubleSubstationBottom = 98;//120//60//60
+  private static final int doubleSubstationTop = -105;//-125//125//185;
 
   private static final int scoreFloorBottom = 120;
-  private static final int scoreFloorTop = 255;
+  private static final int scoreFloorTop = 150;//255;
 
-  private static final int scoreMidBottom = 95;
-  private static final int scoreMidTop = 195;
+  private static final int scoreMidBottom = 80;
+  private static final int scoreMidTop = 115;//195;
 
-  private static final int scoreHighBottom = 135;
-  private static final int scoreHighTop = 160;
+  private static final int scoreHighBottom = 110;
+  private static final int scoreHighTop = 60;//160;
 
   // This arm sim represents an arm that can travel from -75 degrees (rotated down front)
   // to 255 degrees (rotated down in the back).
@@ -130,14 +145,14 @@ public class Robot extends TimedRobot {
   private final MechanismLigament2d HighNode = highNodeHome.append(new MechanismLigament2d("High Cone Node", 46, 90, 10, new Color8Bit(Color.kWhite)));
   private final MechanismRoot2d gridHome = m_mech2d.getRoot("Grid Home", 49.75, 0);
   private final MechanismLigament2d GridNode = gridHome.append(new MechanismLigament2d("Grid Wall", 49.75, 180, 50, new Color8Bit(Color.kWhite)));
-  private final MechanismRoot2d dsHome = m_mech2d.getRoot("Double Substation Home", 49.75, 37);
-  private final MechanismLigament2d DSRamp = dsHome.append(new MechanismLigament2d("Double Substation Ramp", 13.75, 180, 10, new Color8Bit(Color.kWhite)));
-  private final MechanismRoot2d m_armPivot = m_mech2d.getRoot("ArmPivot", 65, 21.75);
+  private final MechanismRoot2d dsHome = m_mech2d.getRoot("Double Substation Home", 80.25, 37);//49.75 + bumper length of 30.5
+  private final MechanismLigament2d DSRamp = dsHome.append(new MechanismLigament2d("Double Substation Ramp", 13.75, 0, 10, new Color8Bit(Color.kWhite)));
+  private final MechanismRoot2d m_armPivot = m_mech2d.getRoot("ArmPivot", armPivotX, armPivotY);
   private final MechanismLigament2d m_arm_bottom =
       m_armPivot.append(
             new MechanismLigament2d(
               "Arm Bottom",
-              27, 
+              bottomArmLength, 
               -90, 
               10, 
               new Color8Bit(Color.kGold)));
@@ -152,7 +167,7 @@ public class Robot extends TimedRobot {
       m_arm_bottom.append(
           new MechanismLigament2d(
               "Arm Top",
-              28.5 + 3.0,
+              topArmLength + 3.0,
               Units.radiansToDegrees(m_arm_topSim.getAngleRads()),
               10,
               new Color8Bit(Color.kPurple)));
@@ -170,11 +185,14 @@ public class Robot extends TimedRobot {
   public void robotInit() {
     m_topEncoder.setDistancePerPulse(kArmEncoderDistPerPulse);
     m_bottomEncoder.setDistancePerPulse(kArmEncoderDistPerPulse);
+
     SmartDashboard.putNumber("Setpoint top (degrees)", 90);
     SmartDashboard.putNumber("Setpoint bottom (degrees)", 90);
+
     controlMode.setDefaultOption("Presets (Setpoints)", 0);
     controlMode.addOption("Virtual Four Bar", 1);
     controlMode.addOption("Manual Angle Adjust", 2);
+    controlMode.addOption("Joystick X:Y Adjust", 3);
 
     presetChooser.setDefaultOption("Starting Position", 0);
     presetChooser.addOption("Floor Intake Position", 1);
@@ -182,8 +200,12 @@ public class Robot extends TimedRobot {
     presetChooser.addOption("Floor Node Score", 3);
     presetChooser.addOption("Mid Node Score", 4);
     presetChooser.addOption("High Node Score", 5);
+    presetChooser.addOption("Straight Up", 6);
+    presetChooser.addOption("Travel Position", 7);
+
     SmartDashboard.putData(controlMode);
     SmartDashboard.putData(presetChooser);
+
     // Put Mechanism 2d to SmartDashboard
     SmartDashboard.putData("Arm Sim", m_mech2d);
   }
@@ -215,27 +237,37 @@ public class Robot extends TimedRobot {
   public void teleopPeriodic() {
 
     switch(controlMode.getSelected()){
+      
       case 1:
         // Here, we run PID control where the top arm acts like a four-bar relative to the bottom. 
-        double pidOutputTop = m_topController.calculate(m_topEncoder.getDistance(), Units.degreesToRadians(MathUtil.clamp(SmartDashboard.getNumber("Setpoint top (degrees)", 0) - MathUtil.clamp(SmartDashboard.getNumber("Setpoint bottom (degrees)", 150), m_arm_bottom_min_angle, m_arm_bottom_max_angle), m_arm_top_min_angle, m_arm_top_max_angle)));
-        m_topMotor.setVoltage(pidOutputTop);
+        //pidOutputTop = m_topController.calculate(m_topEncoder.getDistance(), Units.degreesToRadians(MathUtil.clamp(SmartDashboard.getNumber("Setpoint top (degrees)", 0) - MathUtil.clamp(SmartDashboard.getNumber("Setpoint bottom (degrees)", 150), m_arm_bottom_min_angle, m_arm_bottom_max_angle), m_arm_top_min_angle, m_arm_top_max_angle)));
+        //m_topMotor.setVoltage(pidOutputTop);
+        topSetpoint = (int) (MathUtil.clamp(SmartDashboard.getNumber("Setpoint top (degrees)", 0) - MathUtil.clamp(SmartDashboard.getNumber("Setpoint bottom (degrees)", 150), m_arm_bottom_min_angle, m_arm_bottom_max_angle), m_arm_top_min_angle, m_arm_top_max_angle));
   
-        double pidOutputBottom = m_bottomController.calculate(m_bottomEncoder.getDistance(), Units.degreesToRadians(MathUtil.clamp(SmartDashboard.getNumber("Setpoint bottom (degrees)", 0), m_arm_bottom_min_angle, m_arm_bottom_max_angle)));
-        m_bottomMotor.setVoltage(pidOutputBottom);
+        //pidOutputBottom = m_bottomController.calculate(m_bottomEncoder.getDistance(), Units.degreesToRadians(MathUtil.clamp(SmartDashboard.getNumber("Setpoint bottom (degrees)", 0), m_arm_bottom_min_angle, m_arm_bottom_max_angle)));
+        //m_bottomMotor.setVoltage(pidOutputBottom);
+        bottomSetpoint = (int) MathUtil.clamp(SmartDashboard.getNumber("Setpoint bottom (degrees)", 0), m_arm_bottom_min_angle, m_arm_bottom_max_angle);
         break;
       case 2:
-        pidOutputTop = m_topController.calculate(m_topEncoder.getDistance(), Units.degreesToRadians(MathUtil.clamp(SmartDashboard.getNumber("Setpoint top (degrees)", 0), m_arm_top_min_angle, m_arm_top_max_angle)));
-        m_topMotor.setVoltage(pidOutputTop);
+        //pidOutputTop = m_topController.calculate(m_topEncoder.getDistance(), Units.degreesToRadians(MathUtil.clamp(SmartDashboard.getNumber("Setpoint top (degrees)", 0), m_arm_top_min_angle, m_arm_top_max_angle)));
+        //m_topMotor.setVoltage(pidOutputTop);
+        topSetpoint = (int) MathUtil.clamp(SmartDashboard.getNumber("Setpoint top (degrees)", 0), m_arm_top_min_angle, m_arm_top_max_angle);
 
-        pidOutputBottom = m_bottomController.calculate(m_bottomEncoder.getDistance(), Units.degreesToRadians(MathUtil.clamp(SmartDashboard.getNumber("Setpoint bottom (degrees)", 0), m_arm_bottom_min_angle, m_arm_bottom_max_angle)));
-        m_bottomMotor.setVoltage(pidOutputBottom);
+        //pidOutputBottom = m_bottomController.calculate(m_bottomEncoder.getDistance(), Units.degreesToRadians(MathUtil.clamp(SmartDashboard.getNumber("Setpoint bottom (degrees)", 0), m_arm_bottom_min_angle, m_arm_bottom_max_angle)));
+        //m_bottomMotor.setVoltage(pidOutputBottom);
+        bottomSetpoint = (int) MathUtil.clamp(SmartDashboard.getNumber("Setpoint bottom (degrees)", 0), m_arm_bottom_min_angle, m_arm_bottom_max_angle);
+        break;
+      case 3:
+        // calculate X and/or Y based on current angles - adjust X and/or Y based on joystick - calaculate new angles (topSetpoint,bottomSetpoint),
+
+
         break;
       default: //also case 0
-        int topSetpoint, bottomSetpoint;
+
         switch(presetChooser.getSelected()){
           case 0:
-            topSetpoint = stowedTop;
-            bottomSetpoint = stowedBottom;
+            topSetpoint = startingPositionTop;
+            bottomSetpoint = startingPositionBottom;
             break;
           case 1:
             topSetpoint = intakeTop;
@@ -257,22 +289,31 @@ public class Robot extends TimedRobot {
             topSetpoint = scoreHighTop;
             bottomSetpoint = scoreHighBottom;
             break;
+          case 6:
+            topSetpoint = straightUpTop;
+            bottomSetpoint = straightUpBottom;
+            break;
+          case 7:
+            topSetpoint = travelTop;
+            bottomSetpoint = travelBottom;
+            break;
           default:
-            topSetpoint = stowedTop;
-            bottomSetpoint = stowedBottom;
+            topSetpoint = travelTop;
+            bottomSetpoint = travelBottom;
             break;
         }
+        break; 
+    }
         // Here, we run PID control where the arm moves to the selected setpoint.
-        pidOutputTop = m_topController.calculate(m_topEncoder.getDistance(), Units.degreesToRadians(topSetpoint - bottomSetpoint));
+        //pidOutputTop = m_topController.calculate(m_topEncoder.getDistance(), Units.degreesToRadians(topSetpoint - bottomSetpoint));
+        pidOutputTop = m_topController.calculate(m_topEncoder.getDistance(), Units.degreesToRadians(topSetpoint));
         m_topMotor.setVoltage(pidOutputTop);
-        SmartDashboard.putNumber("Setpoint bottom (degrees)", bottomSetpoint);
-        SmartDashboard.putNumber("Setpoint top (degrees)", topSetpoint);
+
         pidOutputBottom = m_bottomController.calculate(m_bottomEncoder.getDistance(), Units.degreesToRadians(bottomSetpoint));
         m_bottomMotor.setVoltage(pidOutputBottom);
-        break;
-    }
 
-  
+        SmartDashboard.putNumber("Setpoint bottom (degrees)", bottomSetpoint);
+        SmartDashboard.putNumber("Setpoint top (degrees)", topSetpoint);
   }
 
   @Override
