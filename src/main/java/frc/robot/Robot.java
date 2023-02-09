@@ -48,6 +48,7 @@ public class Robot extends TimedRobot {
 
   double pidOutputTop, pidOutputBottom;
   int topSetpoint, bottomSetpoint;
+  boolean shouldHoldArm = true;
 
 
   // distance per pulse = (angle per revolution) / (pulses per revolution)
@@ -190,6 +191,7 @@ public class Robot extends TimedRobot {
 
   @Override
   public void robotInit() {
+
     m_topEncoder.setDistancePerPulse(kArmEncoderDistPerPulse);
     m_bottomEncoder.setDistancePerPulse(kArmEncoderDistPerPulse);
 
@@ -258,6 +260,7 @@ public class Robot extends TimedRobot {
         bottomSetpoint = (int) MathUtil.clamp(SmartDashboard.getNumber("Setpoint bottom (degrees)", 0), m_arm_bottom_min_angle, m_arm_bottom_max_angle);
         break;
       case 3:
+      /**
         // calculate X and/or Y based on current angles - adjust X and/or Y based on joystick - calaculate new angles (topSetpoint,bottomSetpoint),
         deltaX = m_joystick.getRawAxis(0) * .1;
         deltaY = m_joystick.getRawAxis(1) * .1;
@@ -282,8 +285,91 @@ public class Robot extends TimedRobot {
 
         SmartDashboard.putNumber("sin(90)", Math.sin(90));
         SmartDashboard.putNumber("sin(pi 2) correct", Math.sin(Math.PI/2));
+        **/
+//=====================
+
+   
+
+        // Convert sensor readings to angles as used in our forward and inverse kinematics.
+        // Shoulder angle shoud be zero when level with the ground and pointing straight back from the robot (when back of the robot to the right, angles are positive CCW)
+        double mathShoulderAngle = Units.radiansToDegrees(m_bottomEncoder.getDistance());
+        // Elbow Angle is zero when parallel with first/bottom arm (when back of the robot to the right, angles are positive CCW)
+        double mathElbowAngle = Units.radiansToDegrees(m_topEncoder.getDistance());
+        // Calculate the current X,Y location of the intake
+        double currentX = m_arm_bottomLength * Math.cos(Units.degreesToRadians(mathShoulderAngle)) + m_arm_topLength * Math.cos(Units.degreesToRadians(mathShoulderAngle) + Units.degreesToRadians(mathElbowAngle));
+        double currentY = m_arm_bottomLength * Math.sin(Units.degreesToRadians(mathShoulderAngle)) + m_arm_topLength * Math.sin(Units.degreesToRadians(mathShoulderAngle) + Units.degreesToRadians(mathElbowAngle));
+
+        //Read Joystick inputs and apply a deadband
+        deltaX = deadbandAndSquare(m_joystick.getRawAxis(0), 0.1) * 2.5;
+        deltaY = deadbandAndSquare(m_joystick.getRawAxis(1), 0.1) * 2.5;
+
+        // Adjust the target X,Y location of the intake based on joystick inputs
+        double targetX = currentX + deltaX;
+        double targetY = currentY + deltaY;
+
+        SmartDashboard.putNumber("Arm K/DeltaX", deltaX);
+        SmartDashboard.putNumber("Arm K/DeltaY", deltaY);
+        SmartDashboard.putNumber("Arm K/Target X", targetX);
+        SmartDashboard.putNumber("Arm K/Target Y", targetY);
+        
+        // Calculate new arm angles based on target X,Y    
+        double hypot = Math.sqrt((targetX * targetX) + (targetY * targetY));
+        double theta_S2 = Math.acos((Math.pow(m_arm_bottomLength, 2) + Math.pow(hypot, 2) - Math.pow(m_arm_topLength,2)) 
+        / (2.0 * hypot * m_arm_bottomLength));
+        double theta_S1 = Math.asin(targetY/hypot);
+        double theta_E = Math.acos((Math.pow(m_arm_bottomLength, 2) + Math.pow(m_arm_topLength, 2) - Math.pow(hypot,2)) 
+        / (2.0 * m_arm_bottomLength * m_arm_topLength));
+        SmartDashboard.putNumber("Arm K/hypot", hypot);
+        SmartDashboard.putNumber("Arm K/theta_S2", Units.radiansToDegrees(theta_S2));
+        SmartDashboard.putNumber("Arm K/theta_S1", Units.radiansToDegrees(theta_S1));
+        SmartDashboard.putNumber("Arm K/theta_E", Units.radiansToDegrees(theta_E));
+
+        // TODO: NOT SURE ON LOGIC, HAVE TO WALK THRU AGAIN
+        // Final steps to determine new angle setpoints differs based on the quadrant (x,y) is in.
+        if (targetY >= 0) {
+            bottomSetpoint = (int)(Units.radiansToDegrees(theta_S1 + theta_S2));
+        }
+        else {
+            bottomSetpoint = (int)(Units.radiansToDegrees(theta_S2 + theta_S1));
+        }
+
+        if (targetX < 0) {
+            topSetpoint = (int)(Units.radiansToDegrees(Math.PI - theta_E));
+            if (targetY < 0) {
+                bottomSetpoint = (int)(Units.radiansToDegrees(Math.PI - (theta_S2 - theta_S1)));
+            }
+            else {
+                bottomSetpoint = (int)(Units.radiansToDegrees(Math.PI - (theta_S1 + theta_S2)));
+            } 
+        }
+        else {
+            topSetpoint = (int)(Units.radiansToDegrees(theta_E - Math.PI));
+        } 
+
+        //TODO: THINK WE NEED TO SUBTRACT OUT OFFSETS BEFORE SETTING POSITIONS
+        //double shoulderTarget = bottomSetpoint;
+        //double elbowTarget = topSetpoint;
+
+        //elbowTarget = SmartDashboard.getNumber("A/test elbo target", elbowTarget);
+        //shoulderTarget = SmartDashboard.getNumber("A/test shoulder target", shoulderTarget);
 
 
+
+
+        if ((m_joystick.getRawAxis(0) == 0) && (m_joystick.getRawAxis(1) == 0)){ 
+            if (shouldHoldArm) {
+              topSetpoint = (int) Units.radiansToDegrees(m_topEncoder.getDistance()); //shoulder.getShoulderLampreyDegrees();
+              bottomSetpoint = (int) Units.radiansToDegrees(m_bottomEncoder.getDistance());
+               shouldHoldArm = false;
+            }
+        } else {
+            // Change boolean so that if joysticks go back to zero, we will get position/set setpoint, stoping the arms movement.
+            shouldHoldArm = true;    
+        }
+
+
+
+//===============
 
         break;
       default: //also case 0, use predefined setpoints
@@ -343,8 +429,11 @@ public class Robot extends TimedRobot {
         pidOutputBottom = m_bottomController.calculate(m_bottomEncoder.getDistance(), Units.degreesToRadians(bottomSetpoint));
         m_bottomMotor.setVoltage(pidOutputBottom);
 
+
+
+        //  VARIOUS SMARTDASHBOARD PRINTS      
         SmartDashboard.putNumber("top length", m_arm_topLength);
-          SmartDashboard.putNumber("bottom length", m_arm_bottomLength);
+        SmartDashboard.putNumber("bottom length", m_arm_bottomLength);
         SmartDashboard.putNumber("Setpoint bottom (degrees)", bottomSetpoint);
         SmartDashboard.putNumber("Setpoint top (degrees)", topSetpoint);
         SmartDashboard.putNumber("get bottom encoder", Units.radiansToDegrees(m_bottomEncoder.getDistance()));
@@ -357,5 +446,30 @@ public class Robot extends TimedRobot {
   public void disabledInit() {
     // This just makes sure that our simulation code knows that the motor's off.
     m_topMotor.set(0.0);
+    m_bottomMotor.set(0.0);
   }
+
+// UTILITIES
+
+    /**
+   * Checks to see if the absolute value of the input is less than the deadband
+   * @param input - Value in which the deadband will be applied (0 < input < 1)
+   * @param deadband - Deadband to set on the input (double)
+   * @return - input double value adjusted for the deadband
+   */
+  public static double deadband(double input, double deadband) {
+    if (Math.abs(input) < deadband) return 0;
+    return Math.copySign((Math.abs(input) - deadband) / (1 - deadband), input);
+  }
+    /**
+   * Deadband + square joystick axis values.
+   */
+  public static double deadbandAndSquare(double value, double deadband) {
+    // Deadband
+    value = deadband(value, deadband);
+    // Square the axis
+    return Math.copySign(value * value, value);
+  }
+
+
 }
