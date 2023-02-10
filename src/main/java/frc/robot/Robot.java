@@ -260,35 +260,6 @@ public class Robot extends TimedRobot {
         bottomSetpoint = (int) MathUtil.clamp(SmartDashboard.getNumber("Setpoint bottom (degrees)", 0), m_arm_bottom_min_angle, m_arm_bottom_max_angle);
         break;
       case 3:
-      /**
-        // calculate X and/or Y based on current angles - adjust X and/or Y based on joystick - calaculate new angles (topSetpoint,bottomSetpoint),
-        deltaX = m_joystick.getRawAxis(0) * .1;
-        deltaY = m_joystick.getRawAxis(1) * .1;
-        SmartDashboard.putNumber("deltaX", deltaX);
-        double currentX = m_arm_bottomLength * Math.cos(m_bottomEncoder.getDistance()) + m_arm_topLength * Math.cos(m_bottomEncoder.getDistance() + m_topEncoder.getDistance());
-        double currentY = m_arm_bottomLength * Math.sin(m_bottomEncoder.getDistance()) + m_arm_topLength * Math.sin(m_bottomEncoder.getDistance() + m_topEncoder.getDistance());
-        SmartDashboard.putNumber("currentX", currentX);
-        double targetX = currentX + deltaX;
-        double targetY = currentY + deltaY;
-        SmartDashboard.putNumber("targetX", targetX);
-        //calculate angles to get to X,Y
-        double hypot = Math.sqrt((targetX * targetX) + (targetY * targetY));
-        double theta_S2 = Math.acos((m_arm_bottomLength*m_arm_bottomLength + hypot*hypot - m_arm_topLength*m_arm_topLength) / (2*hypot*m_arm_bottomLength));
-        double theta_S1 = Math.atan2( targetY, targetX);
-        bottomSetpoint = (int) Units.radiansToDegrees(theta_S1 + theta_S2);
-        double theta_E = Math.acos((m_arm_bottomLength*m_arm_bottomLength + m_arm_topLength*m_arm_topLength - hypot*hypot) /  (2*m_arm_bottomLength*m_arm_topLength));
-        topSetpoint = (int) Units.radiansToDegrees(theta_E - 180);
-
-        double theta_F = Math.acos((hypot*hypot + m_arm_topLength*m_arm_topLength - m_arm_bottomLength*m_arm_bottomLength) /  (2*hypot*m_arm_topLength));
-
-        SmartDashboard.putNumber("A+B+C", Units.radiansToDegrees(theta_F + theta_E + theta_S1));
-
-        SmartDashboard.putNumber("sin(90)", Math.sin(90));
-        SmartDashboard.putNumber("sin(pi 2) correct", Math.sin(Math.PI/2));
-        **/
-//=====================
-
-   
 
         // Convert sensor readings to angles as used in our forward and inverse kinematics.
         // Shoulder angle shoud be zero when level with the ground and pointing straight back from the robot (when back of the robot to the right, angles are positive CCW)
@@ -306,60 +277,40 @@ public class Robot extends TimedRobot {
         // Adjust the target X,Y location of the intake based on joystick inputs
         double targetX = currentX + deltaX;
         double targetY = currentY + deltaY;
-
-        SmartDashboard.putNumber("Arm K/DeltaX", deltaX);
-        SmartDashboard.putNumber("Arm K/DeltaY", deltaY);
-        SmartDashboard.putNumber("Arm K/Target X", targetX);
-        SmartDashboard.putNumber("Arm K/Target Y", targetY);
         
         // Calculate new arm angles based on target X,Y    
         double hypot = Math.sqrt((targetX * targetX) + (targetY * targetY));
         double theta_S2 = Math.acos((Math.pow(m_arm_bottomLength, 2) + Math.pow(hypot, 2) - Math.pow(m_arm_topLength,2)) 
         / (2.0 * hypot * m_arm_bottomLength));
-        double theta_S1 = Math.asin(targetY/hypot);
+        double theta_S1 = Math.atan2(targetY, targetX);
         double theta_E = Math.acos((Math.pow(m_arm_bottomLength, 2) + Math.pow(m_arm_topLength, 2) - Math.pow(hypot,2)) 
         / (2.0 * m_arm_bottomLength * m_arm_topLength));
-        SmartDashboard.putNumber("Arm K/hypot", hypot);
-        SmartDashboard.putNumber("Arm K/theta_S2", Units.radiansToDegrees(theta_S2));
-        SmartDashboard.putNumber("Arm K/theta_S1", Units.radiansToDegrees(theta_S1));
-        SmartDashboard.putNumber("Arm K/theta_E", Units.radiansToDegrees(theta_E));
-
-        // TODO: NOT SURE ON LOGIC, HAVE TO WALK THRU AGAIN
-        // Final steps to determine new angle setpoints differs based on the quadrant (x,y) is in.
-        if (targetX < 0) {
-            topSetpoint = (int)(Units.radiansToDegrees(Math.PI - theta_E));
-            bottomSetpoint =  (int)(Units.radiansToDegrees(theta_S1 - theta_S2));
-            } else {
-            topSetpoint = (int)(Units.radiansToDegrees(theta_E - Math.PI));
-            bottomSetpoint = (int)(Units.radiansToDegrees(theta_S1 + theta_S2));
-            } 
-
-        //TODO: THINK WE NEED TO SUBTRACT OUT OFFSETS BEFORE SETTING POSITIONS
-        //double shoulderTarget = bottomSetpoint;
-        //double elbowTarget = topSetpoint;
-
-        //elbowTarget = SmartDashboard.getNumber("A/test elbo target", elbowTarget);
-        //shoulderTarget = SmartDashboard.getNumber("A/test shoulder target", shoulderTarget);
 
 
 
-
-        if ((m_joystick.getRawAxis(0) == 0) && (m_joystick.getRawAxis(1) == 0)){ 
+        // if joysticks are zero, hold position
+        if ((deltaX == 0) && (deltaY == 0)){ 
             if (shouldHoldArm) {
               topSetpoint = (int) Units.radiansToDegrees(m_topEncoder.getDistance()); //shoulder.getShoulderLampreyDegrees();
               bottomSetpoint = (int) Units.radiansToDegrees(m_bottomEncoder.getDistance());
-               shouldHoldArm = false;
+              shouldHoldArm = false;
             }
         } else {
             // Change boolean so that if joysticks go back to zero, we will get position/set setpoint, stoping the arms movement.
-            shouldHoldArm = true;    
+            shouldHoldArm = true;  
+            
+            // Final steps to determine new angle setpoints differs based on the quadrant (x,y) is in.
+            if (targetX < 0) {
+              topSetpoint = (int)(Units.radiansToDegrees(Math.PI - theta_E));
+              bottomSetpoint =  (int)(Units.radiansToDegrees(theta_S1 - theta_S2));
+            } else {
+              topSetpoint = (int)(Units.radiansToDegrees(theta_E - Math.PI));
+              bottomSetpoint = (int)(Units.radiansToDegrees(theta_S1 + theta_S2));
+            } 
+
         }
-
-
-
-//===============
-
         break;
+
       default: //also case 0, use predefined setpoints
 
         switch(presetChooser.getSelected()){
