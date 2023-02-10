@@ -300,8 +300,8 @@ public class Robot extends TimedRobot {
         double currentY = m_arm_bottomLength * Math.sin(Units.degreesToRadians(mathShoulderAngle)) + m_arm_topLength * Math.sin(Units.degreesToRadians(mathShoulderAngle) + Units.degreesToRadians(mathElbowAngle));
 
         //Read Joystick inputs and apply a deadband
-        deltaX = deadbandAndSquare(m_joystick.getRawAxis(0), 0.1) * 2.5;
-        deltaY = deadbandAndSquare(m_joystick.getRawAxis(1), 0.1) * 2.5;
+        deltaX = deadbandAndSquare(m_joystick.getRawAxis(0), 0.1) * 0.1;
+        deltaY = deadbandAndSquare(-m_joystick.getRawAxis(1), 0.1) * 0.1;
 
         // Adjust the target X,Y location of the intake based on joystick inputs
         double targetX = currentX + deltaX;
