@@ -326,25 +326,13 @@ public class Robot extends TimedRobot {
 
         // TODO: NOT SURE ON LOGIC, HAVE TO WALK THRU AGAIN
         // Final steps to determine new angle setpoints differs based on the quadrant (x,y) is in.
-        if (targetY >= 0) {
-            bottomSetpoint = (int)(Units.radiansToDegrees(theta_S1 + theta_S2));
-        }
-        else {
-            bottomSetpoint = (int)(Units.radiansToDegrees(theta_S2 + theta_S1));
-        }
-
         if (targetX < 0) {
             topSetpoint = (int)(Units.radiansToDegrees(Math.PI - theta_E));
-            if (targetY < 0) {
-                bottomSetpoint = (int)(Units.radiansToDegrees(Math.PI - (theta_S2 - theta_S1)));
-            }
-            else {
-                bottomSetpoint = (int)(Units.radiansToDegrees(Math.PI - (theta_S1 + theta_S2)));
-            } 
-        }
-        else {
+            bottomSetpoint =  (int)(Units.radiansToDegrees(theta_S1 - theta_S2));
+            } else {
             topSetpoint = (int)(Units.radiansToDegrees(theta_E - Math.PI));
-        } 
+            bottomSetpoint = (int)(Units.radiansToDegrees(theta_S1 + theta_S2));
+            } 
 
         //TODO: THINK WE NEED TO SUBTRACT OUT OFFSETS BEFORE SETTING POSITIONS
         //double shoulderTarget = bottomSetpoint;
